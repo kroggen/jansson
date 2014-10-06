@@ -23,7 +23,7 @@
 #define MAX_REAL_STR_LENGTH     100
 
 #define FLAGS_TO_INDENT(f)      ((f) & 0x1F)
-#define FLAGS_TO_PRECISION(f)   (((f) >> 11) & 0x1F)
+#define FLAGS_TO_PRECISION(f)   (((f) >> 27) & 0x1F)
 
 struct object_key {
     size_t serial;
@@ -68,13 +68,15 @@ static int dump_indent(size_t flags, int depth, int space, json_dump_callback_t 
     return 0;
 }
 
-static int dump_string(const char *str, size_t len, json_dump_callback_t dump, void *data, size_t flags)
+static int dump_string(const char *str, size_t len, json_dump_callback_t dump, void *data, size_t flags, int use_quotes)
 {
     const char *pos, *end, *lim;
     int32_t codepoint;
 
-    if(dump("\"", 1, data))
-        return -1;
+    if (use_quotes) {
+        if(dump("\"", 1, data))
+            return -1;
+    }
 
     end = pos = str;
     lim = str + len;
@@ -158,7 +160,11 @@ static int dump_string(const char *str, size_t len, json_dump_callback_t dump, v
         str = pos = end;
     }
 
-    return dump("\"", 1, data);
+    if (use_quotes) {
+      return dump("\"", 1, data);
+    } else {
+      return 0;
+    }
 }
 
 static int object_key_compare_keys(const void *key1, const void *key2)
@@ -220,7 +226,7 @@ static int do_dump(const json_t *json, size_t flags, int depth,
         }
 
         case JSON_STRING:
-            return dump_string(json_string_value(json), json_string_length(json), dump, data, flags);
+            return dump_string(json_string_value(json), json_string_length(json), dump, data, flags, 1);
 
         case JSON_ARRAY:
         {
@@ -277,6 +283,7 @@ static int do_dump(const json_t *json, size_t flags, int depth,
             void *iter;
             const char *separator;
             int separator_length;
+            int use_quotes;
 
             if(flags & JSON_COMPACT) {
                 separator = ":";
@@ -285,6 +292,11 @@ static int do_dump(const json_t *json, size_t flags, int depth,
             else {
                 separator = ": ";
                 separator_length = 2;
+            }
+            if(flags & JSON_JAVASCRIPT) {
+                use_quotes = 0;
+            } else {
+                use_quotes = 1;
             }
 
             /* detect circular references */
@@ -341,7 +353,7 @@ static int do_dump(const json_t *json, size_t flags, int depth,
                     value = json_object_get(json, key);
                     assert(value);
 
-                    dump_string(key, strlen(key), dump, data, flags);
+                    dump_string(key, strlen(key), dump, data, flags, use_quotes);
                     if(dump(separator, separator_length, data) ||
                        do_dump(value, flags, depth + 1, dump, data))
                     {
@@ -379,7 +391,7 @@ static int do_dump(const json_t *json, size_t flags, int depth,
                     void *next = json_object_iter_next((json_t *)json, iter);
                     const char *key = json_object_iter_key(iter);
 
-                    dump_string(key, strlen(key), dump, data, flags);
+                    dump_string(key, strlen(key), dump, data, flags, use_quotes);
                     if(dump(separator, separator_length, data) ||
                        do_dump(json_object_iter_value(iter), flags, depth + 1,
                                dump, data))
