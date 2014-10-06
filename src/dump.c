@@ -115,6 +115,9 @@ static int dump_string(const char *str, size_t len, json_dump_callback_t dump, v
         if(end == pos)
             break;
 
+        if (use_quotes == 0) 
+            return -1;
+
         /* handle \, /, ", and control codes */
         length = 2;
         switch(codepoint)
